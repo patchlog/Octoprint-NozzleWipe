@@ -7,25 +7,35 @@ import octoprint.plugin
 from octoprint.events import Events
 from octoprint.printer import PrinterCallback
 from flask_babel import gettext
+import random
 
 
 logger = logging.getLogger(__name__)
 
 
 class ProgressMonitor(PrinterCallback):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, plugin, *args, **kwargs):
         super(ProgressMonitor, self).__init__(*args, **kwargs)
         self.reset()
-
+        logger.info("ARGS")
+        logger.info(args)
+        self.plugin=plugin
+        self.job_hold=False
     def reset(self):
         self.completion = None
         self.time_elapsed_s = None
         self.time_left_s = None
 
     def on_printer_send_current_data(self, data):
+        logger.info("on_printer_send_current_data");
+        logger.info(data);
         self.completion = data["progress"]["completion"]
         self.time_elapsed_s = data["progress"]["printTime"]
         self.time_left_s = data["progress"]["printTimeLeft"]
+        if self.time_elapsed_s!=None and self.time_elapsed_s/60>=self.plugin.next_wipe and self.job_hold==False:
+            if self.plugin._printer.set_job_on_hold(True):
+                self.job_hold=True
+                self.plugin._printer.commands("M114")
 
 
 class NozzleWipePlugin(
@@ -37,17 +47,27 @@ class NozzleWipePlugin(
     octoprint.plugin.RestartNeedingPlugin
 ):
     def on_after_startup(self):
-        self._progress = ProgressMonitor()
+        self._progress = ProgressMonitor(self)
         self._printer.register_callback(self._progress)
 
+        self.wipe_interval=3;
+
         settings = self._settings
-        self.progress_from_time = settings.get_boolean(["progress_from_time"])
-        self.wipe_position_x = settings.get_boolean(["wipe_position_x"])
-        self.wipe_position_y = settings.get_boolean(["wipe_position_y"])
-        self.wipe_position_z = settings.get_boolean(["wipe_position_z"])
+        self.wipe_interval = settings.get_int(["wipe_interval"])
+        self.wipe_position_x = settings.get_float(["wipe_position_x"])
+        self.wipe_position_y = settings.get_float(["wipe_position_y"])
+        self.wipe_position_z = settings.get_float(["wipe_position_z"])
+
+        if(self.wipe_interval<1):
+            self.wipe_interval=1;
+        self.next_wipe=self.wipe_interval;
 
 
     def on_event(self, event, payload):
+        self._logger.info("IN EVENT")
+        self._logger.info(event)
+        self._logger.info(payload)
+
         if event == Events.PRINT_STARTED or event == Events.PRINT_DONE:
             # Firmware manages progress bar when printing from SD card
             if payload.get("origin", "") == "sdcard":
@@ -55,37 +75,43 @@ class NozzleWipePlugin(
 
         if event == Events.PRINT_STARTED:
             self._progress.reset()
-            self._set_progress(0)
-        elif event == Events.PRINT_DONE:
-            self._set_progress(100, 0)
+            self.next_wipe=self.wipe_interval
 
-    def on_print_progress(self, storage, path, progress):
-        if not self._printer.is_printing():
-            return
+        if event == Events.POSITION_UPDATE and self._progress.time_elapsed_s!=None and self._progress.time_elapsed_s/60>=self.next_wipe:
+            if not (self.next_wipe<=self.wipe_interval and payload["z"]>1):
+                self._last=payload
+                self._wipe()
+                self._resume()
+            self._printer.set_job_on_hold(False)
+            self.next_wipe = self._progress.time_elapsed_s/60 + self.wipe_interval;
+            self._progress.job_hold=False
 
-        # Firmware manages progress bar when printing from SD card
-        if storage == "sdcard":
-            return
+    def _resume(self):
+        # absolute XYZ
+        self._printer.commands("G90")
+        # move just outside the wipe area
+        self._printer.commands("G1 X{} Y{} F4500".format(self.wipe_position_x-10,self.wipe_position_y-10))
+        # move back to pause position Z
+        self._printer.commands("G1 Z{} F4500".format(self._last["z"]))
+        # move back to pause position XY
+        self._printer.commands("G1 X{} Y{} F4500".format(self._last["x"],self._last["y"]))
 
-        progress = 0.0
-        time_left = None
+        # set relative extruder
+        self._printer.commands("M83")
+        # prime nozzle
+        self._printer.commands("G1 E+5 F4500")
 
-        if (
-            self.progress_from_time and
-            self._progress.time_left_s is not None and
-            self._progress.time_elapsed_s is not None
-        ):
-            time_left_s = self._progress.time_left_s
-            time_elapsed_s = self._progress.time_elapsed_s
-            progress = time_elapsed_s / (time_left_s + time_elapsed_s)
-            progress = progress * 100.0
-        else:
-            progress = self._progress.completion or 0.0
+        # absolute E
+        self._printer.commands("M82")
 
-        self._wipe(progress=progress, time_left=time_left)
+        # reset E
+        self._printer.commands("G92 E{}".format(self._last["e"]))
 
-    def _wipe(self, progress, time_left=None):
-        self._printer.toggle_pause_print()
+        #reset to feed rate before pause if available
+        if self._last["f"] != None:
+            self._printer.commands("G1 F{}".format(self._last["f"]))
+
+    def _wipe(self):
         # set relative
         self._printer.commands("G91")
         self._printer.commands("M83")
@@ -103,32 +129,43 @@ class NozzleWipePlugin(
         self._printer.commands(gcode)
 
         # move a bit more in the wiper to get rid of the plastic
-        gcode="G1 X{} Y{}".format(self.wipe_position_x+5,self.wipe_position_y+2)
+        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y+random.randint(0,5))
         self._printer.commands(gcode)
 
-        gcode="G1 X{} Y{}".format(self.wipe_position_x,self.wipe_position_y-2)
+        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y-random.randint(0,5))
         self._printer.commands(gcode)
 
-        # unpause
-        self._printer.toggle_pause_print();
+        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y+random.randint(0,5))
+        self._printer.commands(gcode)
+
+        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y-random.randint(0,5))
+        self._printer.commands(gcode)
+
+        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y-random.randint(0,5))
+        self._printer.commands(gcode)
+        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y+random.randint(0,5))
+        self._printer.commands(gcode)
 
     def get_settings_defaults(self):
         return dict(
-            wipe_position_x=120,
-            wipe_position_y=120,
+            wipe_position_x=100,
+            wipe_position_y=100,
             wipe_position_z=5,
-            progress_from_time=False
+            wipe_interval=3
         )
 
     def on_settings_save(self, data):
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
 
         settings = self._settings
-        self.wipe_position_x = settings.get_boolean(["wipe_position_x"])
-        self.wipe_position_y = settings.get_boolean(["wipe_position_y"])
-        self.wipe_position_z = settings.get_boolean(["wipe_position_z"])
+        self.wipe_position_x = settings.get_float(["wipe_position_x"])
+        self.wipe_position_y = settings.get_float(["wipe_position_y"])
+        self.wipe_position_z = settings.get_float(["wipe_position_z"])
+        self.wipe_interval = settings.get_int(["wipe_interval"])
+        if(self.wipe_interval<1):
+            self.wipe_interval=1;
+        self.next_wipe=self.wipe_interval;
 
-        self.progress_from_time = settings.get_boolean(["progress_from_time"])
 
     def get_template_configs(self):
         return [
