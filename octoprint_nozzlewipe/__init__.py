@@ -57,6 +57,9 @@ class NozzleWipePlugin(
         self.wipe_position_x = settings.get_float(["wipe_position_x"])
         self.wipe_position_y = settings.get_float(["wipe_position_y"])
         self.wipe_position_z = settings.get_float(["wipe_position_z"])
+        self.wipe_radius = settings.get_float(["wipe_radius"])
+        self.wipe_moves = settings.get_int(["wipe_moves"])
+        self.retraction = settings.get_float(["retraction"])
 
         if(self.wipe_interval<1):
             self.wipe_interval=1;
@@ -89,12 +92,14 @@ class NozzleWipePlugin(
     def _resume(self):
         # absolute XYZ
         self._printer.commands("G90")
-        # move just outside the wipe area
-        self._printer.commands("G1 X{} Y{} F4500".format(self.wipe_position_x-10,self.wipe_position_y-10))
-        # move back to pause position Z
-        self._printer.commands("G1 Z{} F4500".format(self._last["z"]))
+
+        if self._last["z"]<self.wipe_position_z:
+            self._printer.commands("G1 Z{} F4500".format(self.wipe_position_z))
+        else:
+            self._printer.commands("G1 Z{} F4500".format(self._last["z"]))
+
         # move back to pause position XY
-        self._printer.commands("G1 X{} Y{} F4500".format(self._last["x"],self._last["y"]))
+        self._printer.commands("G1 X{} Y{} Z{} F4500".format(self._last["x"],self._last["y"], self._last["z"]))
 
         # set relative extruder
         self._printer.commands("M83")
@@ -116,42 +121,34 @@ class NozzleWipePlugin(
         self._printer.commands("G91")
         self._printer.commands("M83")
         #retract filament
-        self._printer.commands("G1 Z+5 E-5 F4500")
+        self._printer.commands("G1 Z+1 E-5 F4500")
         # absolute
         self._printer.commands("G90")
         self._printer.commands("M82")
+        if self._last["z"]<self.wipe_position_z:
+            self._printer.commands("G1 Z{}".format(self.wipe_position_z))
 
-        # move to the wiper's wiper's position
+        # move to the wiper's XY position
         gcode="G1 X{} Y{}".format(self.wipe_position_x,self.wipe_position_y)
         self._printer.commands(gcode)
 
         gcode=gcode="G1 Z{}".format(self.wipe_position_z)
         self._printer.commands(gcode)
 
-        # move a bit more in the wiper to get rid of the plastic
-        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y+random.randint(0,5))
-        self._printer.commands(gcode)
+        for m in range(self.wipe_moves-1):
+            gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0-self.wipe_radius,self.wipe_radius),self.wipe_position_y+random.randint(0-self.wipe_radius,self.wipe_radius))
+            self._printer.commands(gcode)
 
-        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y-random.randint(0,5))
-        self._printer.commands(gcode)
-
-        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y+random.randint(0,5))
-        self._printer.commands(gcode)
-
-        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y-random.randint(0,5))
-        self._printer.commands(gcode)
-
-        gcode="G1 X{} Y{}".format(self.wipe_position_x+random.randint(0,5),self.wipe_position_y-random.randint(0,5))
-        self._printer.commands(gcode)
-        gcode="G1 X{} Y{}".format(self.wipe_position_x-random.randint(0,5),self.wipe_position_y+random.randint(0,5))
-        self._printer.commands(gcode)
 
     def get_settings_defaults(self):
         return dict(
             wipe_position_x=100,
             wipe_position_y=100,
-            wipe_position_z=5,
-            wipe_interval=3
+            wipe_position_z=19.5,
+            wipe_radius=7,
+            wipe_moves=10,
+            retraction=5,
+            wipe_interval=7
         )
 
     def on_settings_save(self, data):
@@ -161,9 +158,23 @@ class NozzleWipePlugin(
         self.wipe_position_x = settings.get_float(["wipe_position_x"])
         self.wipe_position_y = settings.get_float(["wipe_position_y"])
         self.wipe_position_z = settings.get_float(["wipe_position_z"])
+        self.wipe_radius = settings.get_float(["wipe_radius"])
+        self.wipe_moves = settings.get_int(["wipe_moves"])
+        self.retraction = settings.get_float(["retraction"])
         self.wipe_interval = settings.get_int(["wipe_interval"])
+
+        if self.wipe_moves<2:
+            self.wipe_moves=2
+
+        if self.retraction<1:
+            self.retraction=1
+
+        if self.wipe_radius<3:
+            self.wipe_radius=3
+
         if(self.wipe_interval<1):
             self.wipe_interval=1;
+
         self.next_wipe=self.wipe_interval;
 
 

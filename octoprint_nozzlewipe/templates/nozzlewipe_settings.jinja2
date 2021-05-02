@@ -9,19 +9,36 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label">{{ _("Wipe Position X") }}</label>
+        <label class="control-label">{{ _("Wipe Position Y") }}</label>
         <div class="controls">
             <input type="text" class="input-block-level" data-bind="value: settings.plugins.nozzlewipe.wipe_position_y">
             <div class="help-block">{{ _("Y position of wiping point.") }}</div>
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label">{{ _("Wipe Position X") }}</label>
+        <label class="control-label">{{ _("Wipe Position Z") }}</label>
         <div class="controls">
             <input type="text" class="input-block-level" data-bind="value: settings.plugins.nozzlewipe.wipe_position_z">
             <div class="help-block">{{ _("Z position of wiping point.") }}</div>
         </div>
     </div>
+
+    <div class="control-group">
+        <label class="control-label">{{ _("Wipe radius") }}</label>
+        <div class="controls">
+            <input type="text" class="input-block-level" data-bind="value: settings.plugins.nozzlewipe.wipe_radius">
+            <div class="help-block">{{ _("move the nozzle inside a circle with this radius when wiping") }}</div>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label class="control-label">{{ _("Wipe moves") }}</label>
+        <div class="controls">
+            <input type="text" class="input-block-level" data-bind="value: settings.plugins.nozzlewipe.wipe_moves">
+            <div class="help-block">{{ _("number of moves performed when wiping") }}</div>
+        </div>
+    </div>
+
     <div class="control-group">
         <label class="control-label">{{ _("Wipe Interval (minutes)") }}</label>
         <div class="controls">
@@ -30,5 +47,11 @@
         </div>
     </div>
 
-
+    <div class="control-group">
+        <label class="control-label">{{ _("Retraction before wiping") }}</label>
+        <div class="controls">
+            <input type="text" class="input-block-level" data-bind="value: settings.plugins.nozzlewipe.retraction">
+            <div class="help-block">{{ _("mm to retract before wiping") }}</div>
+        </div>
+    </div>
 </form>
