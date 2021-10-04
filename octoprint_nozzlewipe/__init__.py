@@ -17,8 +17,6 @@ class ProgressMonitor(PrinterCallback):
     def __init__(self, plugin, *args, **kwargs):
         super(ProgressMonitor, self).__init__(*args, **kwargs)
         self.reset()
-        logger.info("ARGS")
-        logger.info(args)
         self.plugin=plugin
         self.job_hold=False
     def reset(self):
@@ -27,8 +25,6 @@ class ProgressMonitor(PrinterCallback):
         self.time_left_s = None
 
     def on_printer_send_current_data(self, data):
-        logger.info("on_printer_send_current_data");
-        logger.info(data);
         self.completion = data["progress"]["completion"]
         self.time_elapsed_s = data["progress"]["printTime"]
         self.time_left_s = data["progress"]["printTimeLeft"]
@@ -67,10 +63,6 @@ class NozzleWipePlugin(
 
 
     def on_event(self, event, payload):
-        self._logger.info("IN EVENT")
-        self._logger.info(event)
-        self._logger.info(payload)
-
         if event == Events.PRINT_STARTED or event == Events.PRINT_DONE:
             # Firmware manages progress bar when printing from SD card
             if payload.get("origin", "") == "sdcard":
