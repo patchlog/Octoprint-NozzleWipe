@@ -1,4 +1,5 @@
 # coding=utf-8
+
 from __future__ import absolute_import, division
 
 import logging
@@ -63,11 +64,6 @@ class NozzleWipePlugin(
 
 
     def on_event(self, event, payload):
-        if event == Events.PRINT_STARTED or event == Events.PRINT_DONE:
-            # Firmware manages progress bar when printing from SD card
-            if payload.get("origin", "") == "sdcard":
-                return
-
         if event == Events.PRINT_STARTED:
             self._progress.reset()
             self.next_wipe=self.wipe_interval
@@ -124,7 +120,7 @@ class NozzleWipePlugin(
         gcode="G1 X{} Y{}".format(self.wipe_position_x,self.wipe_position_y)
         self._printer.commands(gcode)
 
-        gcode=gcode="G1 Z{}".format(self.wipe_position_z)
+        gcode="G1 Z{}".format(self.wipe_position_z)
         self._printer.commands(gcode)
 
         for m in range(self.wipe_moves-1):
@@ -200,12 +196,11 @@ class NozzleWipePlugin(
 __plugin_name__ = "Nozzle Wipe Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
 
-
 def __plugin_load__():
     global __plugin_implementation__
     __plugin_implementation__ = NozzleWipePlugin()
 
-    global __plugin_hooks__
+    global __plugin_hooks__ 
     __plugin_hooks__ = {
         "octoprint.plugin.softwareupdate.check_config":
             __plugin_implementation__.get_update_information
